@@ -1,0 +1,14 @@
+#!/bin/bash
+
+echo "Stopping Dante Traffic Monitor..."
+
+# Stopping "tail" output forwarding
+TAIL_PS=$(ps aux | grep "tail -f -n +1 /var/log/danted.log" | grep -v "grep")
+TAIL_PS=$(echo $TAIL_PS | cut -d " " -f 2)
+echo $TAIL_PS
+kill -s SIGINT $TAIL_PS
+
+# Stopping "dante-trafmon" process
+killall -s SIGINT dante_trafmon
+
+echo "Dante Traffic Monitor is stopped!"

@@ -1,0 +1,27 @@
+#!/bin/bash
+
+MONITOR_PORT="35531"
+DANTE_LOG="/var/log/danted.log"
+
+# Starting Dante Traffic Monitor
+./dante_trafmon --daemon
+
+# TODO: Keep log or delete.
+# Resetting log. Currently old log is deleted.
+rm $DANTE_LOG
+killall -s SIGHUP danted
+
+# Waiting for remote connection to open
+echo "Waiting for remote connection to open..."
+RES=1
+while [ $RES -eq 1 ]
+do
+    nc -z 127.0.0.1 $MONITOR_PORT
+    RES=$?
+    sleep 1s
+done
+echo "Remote connection is available!"
+
+# Forwarding dante log output to Dante Traffic Monitor
+( tail -f -n +1 $DANTE_LOG > /dev/tcp/127.0.0.1/$MONITOR_PORT ) &
+echo "Remote connection established. Traffic monitor started."

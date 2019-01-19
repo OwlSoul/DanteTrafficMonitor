@@ -16,20 +16,67 @@ import daemon
 import psycopg2
 import setproctitle
 
-
 class Application:
     """
     Main application class
     """
 
-    # Database parameters, should be loaded from config
-    db_name = "danted"
-    db_username = "danted"
-    db_host = "localhost"
-    db_password = "TestPass8594"
+    _db_name = "danted"
+    _db_username = "danted"
+    _db_hostname = "127.0.0.1"
+    _db_password = "TestPass8594"
 
-    LISTEN_SERVER = '127.0.0.1'
-    DANTE_LOG_PORT = 35531
+    # Database parameters, probably should be loaded from config
+    @property
+    def db_name(self):
+        return self._db_name
+
+    @db_name.setter
+    def db_name(self, value):
+        self._db_name = value
+
+    @property
+    def db_username(self):
+        return self._db_username
+
+    @db_username.setter
+    def db_username(self, value):
+        self._db_username = value
+
+    @property
+    def db_hostname(self):
+        return self._db_hostname
+
+    @db_hostname.setter
+    def db_hostname(self, value):
+        self._db_hostname = value
+
+    @property
+    def db_password(self):
+        return self._db_password
+
+    @db_password.setter
+    def db_password(self, value):
+        self._db_password = value
+
+    _listen_address = "127.0.0.1"
+    _listen_port = 35531
+
+    @property
+    def listen_address(self):
+        return self._listen_address
+
+    @listen_address.setter
+    def listen_address(self, value):
+        self._listen_address = value
+
+    @property
+    def listen_port(self):
+        return self._listen_port
+
+    @listen_port.setter
+    def listen_port(self, value):
+        self._listen_port = value
 
     dante_thread = None
 
@@ -79,19 +126,21 @@ class Application:
     def sigint_handler(self, signl, frame):
         """SIGINT Handler"""
         # pylint: disable=W0612,W0613
-        print("\nINFO: SIGINT signal received! - Program will be terminated.")
+        print("\nINFO : " + str(datetime.datetime.now()) +
+              " SIGINT signal received! Program will be terminated.")
         self.dante_thread.stop()
-        sys.exit(0)
+        self.dante_thread.timer.join()
+        self.dante_thread.join()
 
     def sigusr1_handler(self, signl, frame):
         """SIGUSR1 Handler"""
         # pylint: disable=W0612,W0613
-        print("\nINFO: SIGUSR1 signal received!")
-        print("INFO: Resetting stored counters.")
+        print("\nINFO : " + str(datetime.datetime.now()) + " SIGUSR1 signal received!")
+        print("INFO: " + str(datetime.datetime.now()) + " Resetting stored counters.")
         self.lock.acquire()
         self.dante_thread.traffic_dict = defaultdict(lambda: [0, 0])
         self.lock.release()
-        print("INFO: Traffic counters were reset.")
+        print("INFO : " + str(datetime.datetime.now()) + " Traffic counters were reset.")
 
     def do_main_program(self):
         """
@@ -106,7 +155,7 @@ class Application:
                                       self)
         self.dante_thread.start()
 
-        while 1:
+        while self.dante_thread.thread_running:
             time.sleep(1)
 
     def execute(self):
@@ -132,37 +181,54 @@ class TimerThread(threading.Thread):
     log_thread = None
     app = None
 
-    def __init__(self, app, log_thread):
+    def __init__(self, application, log_thread):
         super(TimerThread, self).__init__()
         self.log_thread = log_thread
-        self.app = app
+        self.app = application
 
     def data_init_from_db(self):
-        """Initialize data from database"""
-        conn = None
+        """Initialize data from database. This is important, if script cannot receive data
+        from database if should halt.
+        TODO: This behaviour should probably be changed later."""
+        result = 0
+        result_msg = "OK!"
+
+        if self.app.verbose >= 3:
+            print("INFO : " + str(datetime.datetime.now()) +
+                  " Database: '" + self.app.db_name +
+                  " Hostname: " + self.app.db_hostname +
+                  " User: " + self.app.db_name +
+                  " Password: " + self.app.db_password)
 
         try:
-            conn = psycopg2.connect(host=self.app.db_host,
+            conn = psycopg2.connect(host=self.app.db_hostname,
                                     database=self.app.db_name,
                                     user=self.app.db_username,
-                                    password=self.app.db_password)
-        except psycopg2.Error:
-            print("ERROR: Unable to connect to database (data_init_from_db)")
-
-        finally:
+                                    password=self.app.db_password,
+                                    connect_timeout=5)
+        except psycopg2.OperationalError as e:
+            print("ERROR: " + str(datetime.datetime.now()) +
+                  " Unable to connect to database (data_init_from_db)")
+            print("ERROR: " + str(datetime.datetime.now()) + " " + str(e))
+            result = 1
+            result_msg = str(e)
+        else:
             if conn is not None:
                 cur = conn.cursor()
 
                 cur.execute("SELECT * FROM traffic")
-                result = cur.fetchall()
-                for row in result:
+                res = cur.fetchall()
+                for row in res:
                     if self.app.verbose >= 3: print(row)
                     self.log_thread.traffic_dict[row[0]] = [row[2], row[1]]
 
                 cur.close()
                 conn.close()
             else:
-                print("ERROR: Failed to obtain PSQL cursor (data_init_from_db")
+                print("ERROR: " + str(datetime.datetime.now()) +
+                      " Failed to obtain PSQL cursor (data_init_from_db)")
+
+        return result, result_msg
 
     def run(self):
         """Timer threar "run" function"""
@@ -171,7 +237,12 @@ class TimerThread(threading.Thread):
             return
 
         # Getting initial data from database
-        self.data_init_from_db()
+        result, result_msg = self.data_init_from_db()
+        if result != 0:
+            print("ERROR: " + str(datetime.datetime.now()) +
+                  " Database is not available, terminating now.")
+            self.log_thread.stop()
+            return
 
         while self.log_thread.thread_running:
             self.app.lock.acquire()
@@ -181,37 +252,21 @@ class TimerThread(threading.Thread):
                                           self.log_thread.traffic_dict)
 
             # Write to PGSQL
-            try:
-                conn = psycopg2.connect(host=self.app.db_host,
-                                        database=self.app.db_name,
-                                        user=self.app.db_username,
-                                        password=self.app.db_password)
-            except psycopg2.Error:
-                print("ERROR: Unable to connect to database (main cycle)")
+            result, result_msg = self.log_thread.write_to_pgsql(self.log_thread.traffic_dict)
 
-            cur = conn.cursor()
-
-            # "UPSERT" operation using ON CONFLICT
-            for key, value in self.log_thread.traffic_dict.items():
-                if self.app.verbose >= 2: print("  ", key, ':', value[1], '  ', value[0])
-                cur.execute("INSERT INTO traffic(username, outgoing, incoming)"
-                            "VALUES ('"+str(key)+"',"+str(value[0])+","+str(value[1])+")"
-                            "ON CONFLICT(username) DO UPDATE "
-                            "SET outgoing="+str(value[0])+",incoming="+str(value[1])+"")
-
-            conn.commit()
-            cur.close()
-            conn.close()
             self.app.lock.release()
 
-            print("INFO: "+str(datetime.datetime.now())+" - Data write to database (OK)")
+            if result == 0:
+                print("INFO : "+str(datetime.datetime.now())+" Data write to database (OK)")
+            else:
+                print("INFO : " + str(datetime.datetime.now()) + " Data write to database (FAIL)")
 
             time.sleep(self.app.WRITE_PERIOD)
 
 
 class LogThread(threading.Thread):
     """
-    One thread for one data source, currently only one datasource extsts anyway -
+    One thread for one data source, currently only one data source exists anyway -
     data redirected from danted.log to socket.
     """
     LOG_TYPE_NONE = 0
@@ -219,6 +274,8 @@ class LogThread(threading.Thread):
 
     name = 'Thread'
     app = None
+    timer = None
+
     thread_running = True
 
     log_type = LOG_TYPE_NONE
@@ -226,31 +283,33 @@ class LogThread(threading.Thread):
     # Dictionary to keep traffic
     traffic_dict = defaultdict(lambda: [0, 0])
 
-    def __init__(self, name, log_type, app):
+    def __init__(self, name, log_type, application):
         super(LogThread, self).__init__()
         self.name = name
         self.log_type = log_type
-        self.app = app
+        self.app = application
 
     def run(self):
         """
         Run separate thread
         """
-        print("INFO: Thread " + self.name +" started. Port: " + str(self.app.DANTE_LOG_PORT))
+        print("INFO : " + str(datetime.datetime.now()) +
+              " Thread " + self.name + " started. Port: " + str(self.app.listen_port))
 
-        timer = TimerThread(log_thread=self, app=self.app)
-        timer.start()
+        self.timer = TimerThread(log_thread=self, application=self.app)
+        self.timer.start()
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.settimeout(5)
 
         try:
-            sock.bind((self.app.LISTEN_SERVER,
-                       self.app.DANTE_LOG_PORT))
+            sock.bind((self.app.listen_address,
+                       self.app.listen_port))
         except socket.error:
-            print("Socket bind " + self.app.LISTEN_SERVER +
-                  ":" + str(self.app.DANTE_LOG_PORT) + " failed!")
+            print("INFO : " + str(datetime.datetime.now()) +
+                  " Socket bind " + self.app.listen_address +
+                  ":" + str(self.app.listen_port) + " failed!")
             sys.exit(1)
 
         sock.listen(5)
@@ -261,7 +320,8 @@ class LogThread(threading.Thread):
             except socket.timeout:
                 continue
 
-            print("Connection established: "+str(addr))
+            print("INFO : " + str(datetime.datetime.now()) +
+                  "Connection established: "+str(addr))
             while self.thread_running:
                 conn.settimeout(5)
 
@@ -271,7 +331,7 @@ class LogThread(threading.Thread):
                 except socket.timeout:
                     continue
 
-                # If data received, parce it
+                # If data received, parse it
                 if data != (b'', None):
                     string = data[0].decode("utf-8")
                     lines = string.splitlines()
@@ -302,7 +362,9 @@ class LogThread(threading.Thread):
             conn.shutdown(socket.SHUT_RDWR)
         sock.shutdown(socket.SHUT_RDWR)
 
-        print("INFO: Thread "+self.name+" terminated.")
+        print("INFO : " + str(datetime.datetime.now()) +
+              " Thread "+self.name+" terminated.")
+        return
 
     def stop(self):
         """ Set the thread to stop"""
@@ -316,10 +378,44 @@ class LogThread(threading.Thread):
             file_handler.write(key+','+str(value[0])+','+str(value[1])+'\n')
         file_handler.close()
 
+    def write_to_pgsql(self, out_dict):
+        result = 0
+        result_msg = ""
+        """Write current collected data of users traffic consumption to PostgreSQL database"""
+        try:
+            conn = psycopg2.connect(host=self.app.db_hostname,
+                                    database=self.app.db_name,
+                                    user=self.app.db_username,
+                                    password=self.app.db_password,
+                                    connect_timeout=5)
+        except psycopg2.OperationalError as e:
+            print("ERROR: " + str(datetime.datetime.now()) +
+                  " Unable to connect to database (main cycle)")
+            print("ERROR: " + str(datetime.datetime.now()) + " " + str(e))
+            result = 1
+            result_msg = str(e)
+        else:
+            cur = conn.cursor()
+
+            # "UPSERT" operation using ON CONFLICT
+            for key, value in out_dict.items():
+                if self.app.verbose >= 2: print("  ", key, ':', value[1], '  ', value[0])
+                cur.execute("INSERT INTO traffic(username, outgoing, incoming)"
+                            "VALUES ('" + str(key) + "'," + str(value[0]) + "," + str(value[1]) + ")"
+                            "ON CONFLICT(username) DO UPDATE "
+                            "SET outgoing=" + str(
+                            value[0]) + ",incoming=" + str(value[1]) + "")
+
+            conn.commit()
+            cur.close()
+            conn.close()
+
+        return result, result_msg
+
 # ------------                           MAIN                                 ------------ #
 
 
 if __name__ == "__main__":
-    main_app = Application()
-    main_app.execute()
+    app = Application()
+    app.execute()
     sys.exit(0)

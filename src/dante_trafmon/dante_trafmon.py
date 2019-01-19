@@ -16,80 +16,136 @@ import daemon
 import psycopg2
 import setproctitle
 
-LISTEN_SERVER = '127.0.0.1'
-DANTE_LOG_PORT = 35531
 
-# Database parameters, should be loaded from config
-db_name = "danted"
-db_username = "danted"
-db_host = "localhost"
-db_password = "TestPass8594"
+class Application:
+    """
+    Main application class
+    """
 
-dante_thread = None
+    # Database parameters, should be loaded from config
+    db_name = "danted"
+    db_username = "danted"
+    db_host = "localhost"
+    db_password = "TestPass8594"
 
-# Verbosity: 0 - none
-#            1 - minimal
-#            2 - moderate
-#            3 - everything
-verbose = 3
+    LISTEN_SERVER = '127.0.0.1'
+    DANTE_LOG_PORT = 35531
 
-# ------------                             OUTPUT                             ------------ #
-# How often to write results out
-WRITE_PERIOD = 2
-# File to write results out
-OUTFILE = 'dante_trafmon.data'
-# Log structure:
-#  username_1,out,in
-#  username_2,out,in
-#  ...
-#  username_n,out,in
+    dante_thread = None
 
-lock = threading.Lock()
+    # Verbosity: 0 - none
+    #            1 - minimal
+    #            2 - moderate
+    #            3 - everything
+    verbose = 3
 
+    # Daemonize the program or not?
+    do_daemonize = False
 
-def sigint_handler(sig, frame):
-    """SIGINT Handler"""
-    # pylint: disable=W0612,W0613
-    print("\nINFO: SIGINT signal received! - Program will be terminated.")
-    dante_thread.stop()
-    sys.exit(0)
+    # How often to write results out
+    WRITE_PERIOD = 2
+    # File to write results out
+    OUTFILE = 'dante_trafmon.data'
 
+    # Log structure:
+    #  username_1,out,in
+    #  username_2,out,in
+    #  ...
+    #  username_n,out,in
 
-def sigusr1_handler(sig, frame):
-    """SIGUSR1 Handler"""
-    # pylint: disable=W0612,W0613
-    print("\nINFO: SIGUSR1 signal received!")
-    print("INFO: Resetting stored counters.")
-    lock.acquire()
-    dante_thread.traffic_dict = defaultdict(lambda: [0, 0])
-    lock.release()
-    print("INFO: Traffic counters were reset.")
+    lock = threading.Lock()
+
+    def __init__(self):
+        # Setting process name
+        setproctitle.setproctitle("dante_trafmon")
+
+        self.do_daemonize = False
+        # Parse arguments
+        parser = argparse.ArgumentParser(description="Dante traffic monitor, counts"
+                                                     "traffic used by different users"
+                                                     "of dante proxy server.")
+        parser.add_argument("--daemon", action="store_true", default=False,
+                            help="Daemonize process.")
+
+        args = parser.parse_args()
+        if args.daemon:
+            self.do_daemonize = True
+
+    @staticmethod
+    def basic_test():
+        """Basic test to ensure pytest works"""
+        return "TEST"
+
+    def sigint_handler(self, signl, frame):
+        """SIGINT Handler"""
+        # pylint: disable=W0612,W0613
+        print("\nINFO: SIGINT signal received! - Program will be terminated.")
+        self.dante_thread.stop()
+        sys.exit(0)
+
+    def sigusr1_handler(self, signl, frame):
+        """SIGUSR1 Handler"""
+        # pylint: disable=W0612,W0613
+        print("\nINFO: SIGUSR1 signal received!")
+        print("INFO: Resetting stored counters.")
+        self.lock.acquire()
+        self.dante_thread.traffic_dict = defaultdict(lambda: [0, 0])
+        self.lock.release()
+        print("INFO: Traffic counters were reset.")
+
+    def do_main_program(self):
+        """
+        Launch the tread to listen for incoming data about dante traffic,
+        then enter eternal cycle.
+        """
+        signal.signal(signal.SIGINT, self.sigint_handler)
+        signal.signal(signal.SIGUSR1, self.sigusr1_handler)
+
+        self.dante_thread = LogThread("DANTE",
+                                      LogThread.LOG_TYPE_DANTE,
+                                      self)
+        self.dante_thread.start()
+
+        while 1:
+            time.sleep(1)
+
+    def execute(self):
+        """Execute main application"""
+        # Prepare daemon context
+        if self.do_daemonize:
+            logfile = open('daemon.log', 'w')
+            context = daemon.DaemonContext(stdout=logfile, stderr=logfile)
+            context.open()
+
+            with context:
+                self.do_main_program()
+        else:
+            self.do_main_program()
 
 # ---------------------------------------------------------------------------------------- #
 
 
-def basic_test():
-    """Basic test to ensure pytest works"""
-    return "TEST"
-
-
 class TimerThread(threading.Thread):
     """
-    Timer thread class
+    Timer thread class, will write data to database every WRITE_PERIOD seconds
     """
     log_thread = None
+    app = None
 
-    def __init__(self, log_thread):
+    def __init__(self, app, log_thread):
         super(TimerThread, self).__init__()
         self.log_thread = log_thread
+        self.app = app
 
     def data_init_from_db(self):
         """Initialize data from database"""
         conn = None
 
         try:
-            conn = psycopg2.connect(host=db_host, database=db_name,
-                                    user=db_username, password=db_password)
+            conn = psycopg2.connect(host=self.app.db_host,
+                                    database=self.app.db_name,
+                                    user=self.app.db_username,
+                                    password=self.app.db_password)
         except psycopg2.Error:
             print("ERROR: Unable to connect to database (data_init_from_db)")
 
@@ -100,7 +156,7 @@ class TimerThread(threading.Thread):
                 cur.execute("SELECT * FROM traffic")
                 result = cur.fetchall()
                 for row in result:
-                    if verbose >= 3: print(row)
+                    if self.app.verbose >= 3: print(row)
                     self.log_thread.traffic_dict[row[0]] = [row[2], row[1]]
 
                 cur.close()
@@ -110,8 +166,6 @@ class TimerThread(threading.Thread):
 
     def run(self):
         """Timer threar "run" function"""
-        global verbose
-        global lock
 
         if self.log_thread is None:
             return
@@ -120,15 +174,18 @@ class TimerThread(threading.Thread):
         self.data_init_from_db()
 
         while self.log_thread.thread_running:
-            lock.acquire()
+            self.app.lock.acquire()
 
             # Write to file
-            self.log_thread.write_to_file(OUTFILE, self.log_thread.traffic_dict)
+            self.log_thread.write_to_file(self.app.OUTFILE,
+                                          self.log_thread.traffic_dict)
 
             # Write to PGSQL
             try:
-                conn = psycopg2.connect(host=db_host, database=db_name,
-                                        user=db_username, password=db_password)
+                conn = psycopg2.connect(host=self.app.db_host,
+                                        database=self.app.db_name,
+                                        user=self.app.db_username,
+                                        password=self.app.db_password)
             except psycopg2.Error:
                 print("ERROR: Unable to connect to database (main cycle)")
 
@@ -136,51 +193,52 @@ class TimerThread(threading.Thread):
 
             # "UPSERT" operation using ON CONFLICT
             for key, value in self.log_thread.traffic_dict.items():
-                if verbose >= 2: print("  ", key, ':', value[1], '  ', value[0])
+                if self.app.verbose >= 2: print("  ", key, ':', value[1], '  ', value[0])
                 cur.execute("INSERT INTO traffic(username, outgoing, incoming)"
-                            "VALUES ('"+str(key)+"',"+str(value[1])+","+str(value[0])+")"
+                            "VALUES ('"+str(key)+"',"+str(value[0])+","+str(value[1])+")"
                             "ON CONFLICT(username) DO UPDATE "
-                            "SET outgoing="+str(value[1])+",incoming="+str(value[0])+"")
+                            "SET outgoing="+str(value[0])+",incoming="+str(value[1])+"")
 
             conn.commit()
             cur.close()
             conn.close()
-            lock.release()
+            self.app.lock.release()
 
             print("INFO: "+str(datetime.datetime.now())+" - Data write to database (OK)")
 
-            time.sleep(WRITE_PERIOD)
+            time.sleep(self.app.WRITE_PERIOD)
 
 
 class LogThread(threading.Thread):
     """
-    Logging thread class
+    One thread for one data source, currently only one datasource extsts anyway -
+    data redirected from danted.log to socket.
     """
     LOG_TYPE_NONE = 0
     LOG_TYPE_DANTE = 1
 
     name = 'Thread'
+    app = None
     thread_running = True
 
     log_type = LOG_TYPE_NONE
-    server = '127.0.0.1'
-    port = 30000
 
     # Dictionary to keep traffic
     traffic_dict = defaultdict(lambda: [0, 0])
 
-    def __init__(self, name, log_type, server, port):
+    def __init__(self, name, log_type, app):
         super(LogThread, self).__init__()
         self.name = name
         self.log_type = log_type
-        self.server = server
-        self.port = port
+        self.app = app
 
-    ''' RUN '''
     def run(self):
-        print("INFO: Thread "+self.name+" started. Port: "+str(DANTE_LOG_PORT))
+        """
+        Run separate thread
+        """
+        print("INFO: Thread " + self.name +" started. Port: " + str(self.app.DANTE_LOG_PORT))
 
-        timer = TimerThread(log_thread=self)
+        timer = TimerThread(log_thread=self, app=self.app)
         timer.start()
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -188,9 +246,11 @@ class LogThread(threading.Thread):
         sock.settimeout(5)
 
         try:
-            sock.bind((self.server, self.port))
+            sock.bind((self.app.LISTEN_SERVER,
+                       self.app.DANTE_LOG_PORT))
         except socket.error:
-            print("Socket bind "+self.server+":"+str(self.port)+" failed!")
+            print("Socket bind " + self.app.LISTEN_SERVER +
+                  ":" + str(self.app.DANTE_LOG_PORT) + " failed!")
             sys.exit(1)
 
         sock.listen(5)
@@ -216,25 +276,25 @@ class LogThread(threading.Thread):
                     string = data[0].decode("utf-8")
                     lines = string.splitlines()
                     # Parsing log string
-                    lock.acquire()
+                    self.app.lock.acquire()
                     for line in lines:
                         print("L:", line)
                         # Outgoing traffic
                         regex = r'.*username\%(.*)@.*->.*\((.*)\)'
                         res = re.match(regex, line)
                         if res:
-                            if verbose >= 3: print('  OUT:', res.groups())
+                            if self.app.verbose >= 3: print('  OUT:', res.groups())
                             self.traffic_dict[res.groups()[0]][0] += int(res.groups()[1])
                         else:
                             # Incoming Traffic
                             regex = r'.*->.*username\%(.*)@.*\((.*)\)'
                             res = re.match(regex, line)
                             if res:
-                                if verbose >= 3: print('  IN :', res.groups())
+                                if self.app.verbose >= 3: print('  IN :', res.groups())
                                 self.traffic_dict[res.groups()[0]][1] += int(res.groups()[1])
                         print("-----")
                         print("")
-                    lock.release()
+                    self.app.lock.release()
 
                 else:
                     break
@@ -245,12 +305,12 @@ class LogThread(threading.Thread):
         print("INFO: Thread "+self.name+" terminated.")
 
     def stop(self):
+        """ Set the thread to stop"""
         self.thread_running = False
 
     @staticmethod
     def write_to_file(filename, out_dict):
-        global lock
-
+        """Write current collected data of users traffic consumption to file"""
         file_handler = open(filename, "w")
         for key, value in out_dict.items():
             file_handler.write(key+','+str(value[0])+','+str(value[1])+'\n')
@@ -259,45 +319,7 @@ class LogThread(threading.Thread):
 # ------------                           MAIN                                 ------------ #
 
 
-def do_main_program():
-    """
-    Launch the tread to listen for incoming data about dante traffic,
-    then enter eternal cycle.
-    """
-    global dante_thread
-    signal.signal(signal.SIGINT, sigint_handler)
-    signal.signal(signal.SIGUSR1, sigusr1_handler)
-
-    dante_thread = LogThread("DANTE", LogThread.LOG_TYPE_DANTE, LISTEN_SERVER, DANTE_LOG_PORT)
-    dante_thread.start()
-
-    while 1:
-        time.sleep(1)
-
-
 if __name__ == "__main__":
-    # Setting process name
-    setproctitle.setproctitle("dante_trafmon")
-
-    do_daemonize = False
-    # Parse arguments
-    parser = argparse.ArgumentParser(description="Dante traffic monitor, counts"
-                                                 "traffic used by different users"
-                                                 "of dante proxy server.")
-    parser.add_argument("--daemon", action="store_true", default=False, help="Daemonize process.")
-
-    args = parser.parse_args()
-    if args.daemon:
-        do_daemonize = True
-
-    # Prepare daemon context
-    if do_daemonize:
-        logfile = open('daemon.log', 'w')
-        context = daemon.DaemonContext(stdout=logfile, stderr=logfile)
-        context.open()
-
-        with context:
-            do_main_program()
-    else:
-        do_main_program()
+    main_app = Application()
+    main_app.execute()
     sys.exit(0)

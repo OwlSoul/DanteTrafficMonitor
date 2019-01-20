@@ -4,12 +4,14 @@ MONITOR_PORT="35531"
 DANTE_LOG="/var/log/danted.log"
 
 # Starting Dante Traffic Monitor
-./dante_trafmon --daemon
+echo "Starting \"dante-trafmon\" scripts"
+python3 ../src/dante_trafmon/dante_trafmon.py --daemon
 
 # TODO: Keep log or delete.
 # Resetting log. Currently old log is deleted.
-rm $DANTE_LOG
-killall -s SIGHUP danted
+echo "Resetting danted log"
+sudo rm -f $DANTE_LOG
+sudo killall -s SIGHUP danted
 
 # Waiting for remote connection to open
 echo "Waiting for remote connection to open..."
@@ -23,5 +25,5 @@ done
 echo "Remote connection is available!"
 
 # Forwarding dante log output to Dante Traffic Monitor
-( tail -f -n +1 $DANTE_LOG > /dev/tcp/127.0.0.1/$MONITOR_PORT ) &
+( sudo tail -f -n +1 $DANTE_LOG > /dev/tcp/127.0.0.1/$MONITOR_PORT ) &
 echo "Remote connection established. Traffic monitor started."

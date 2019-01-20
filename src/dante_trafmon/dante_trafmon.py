@@ -21,6 +21,8 @@ class Application:
     Main application class
     """
 
+    daemon_log = "daemon.log"
+
     _db_name = "danted"
     _db_username = "danted"
     _db_hostname = "127.0.0.1"
@@ -132,6 +134,11 @@ class Application:
         self.dante_thread.timer.join()
         self.dante_thread.join()
 
+    def sigterm_handler(self, signl, frame):
+        """SIGTERM Handler"""
+        print("\nINFO : " + str(datetime.datetime.now()) + " SIGTERM signal received!")
+        self.sigint_handler(signl,frame)
+
     def sigusr1_handler(self, signl, frame):
         """SIGUSR1 Handler"""
         # pylint: disable=W0612,W0613
@@ -148,6 +155,7 @@ class Application:
         then enter eternal cycle.
         """
         signal.signal(signal.SIGINT, self.sigint_handler)
+        signal.signal(signal.SIGTERM, self.sigterm_handler)
         signal.signal(signal.SIGUSR1, self.sigusr1_handler)
 
         self.dante_thread = LogThread("DANTE",
@@ -162,7 +170,7 @@ class Application:
         """Execute main application"""
         # Prepare daemon context
         if self.do_daemonize:
-            logfile = open('daemon.log', 'w')
+            logfile = open(self.daemon_log, 'w')
             context = daemon.DaemonContext(stdout=logfile, stderr=logfile)
             context.open()
 
@@ -248,8 +256,10 @@ class TimerThread(threading.Thread):
             self.app.lock.acquire()
 
             # Write to file
-            self.log_thread.write_to_file(self.app.OUTFILE,
-                                          self.log_thread.traffic_dict)
+            # ERROR: No write rights under non-root user in Vagrant.
+            #        Suspending for now
+            #self.log_thread.write_to_file(self.app.OUTFILE,
+            #                              self.log_thread.traffic_dict)
 
             # Write to PGSQL
             result, result_msg = self.log_thread.write_to_pgsql(self.log_thread.traffic_dict)
@@ -321,7 +331,7 @@ class LogThread(threading.Thread):
                 continue
 
             print("INFO : " + str(datetime.datetime.now()) +
-                  "Connection established: "+str(addr))
+                  " Connection established: "+str(addr))
             while self.thread_running:
                 conn.settimeout(5)
 
@@ -373,7 +383,7 @@ class LogThread(threading.Thread):
     @staticmethod
     def write_to_file(filename, out_dict):
         """Write current collected data of users traffic consumption to file"""
-        file_handler = open(filename, "w")
+        file_handler = open(filename, mode="w+")
         for key, value in out_dict.items():
             file_handler.write(key+','+str(value[0])+','+str(value[1])+'\n')
         file_handler.close()
@@ -403,8 +413,8 @@ class LogThread(threading.Thread):
                 cur.execute("INSERT INTO traffic(username, outgoing, incoming)"
                             "VALUES ('" + str(key) + "'," + str(value[0]) + "," + str(value[1]) + ")"
                             "ON CONFLICT(username) DO UPDATE "
-                            "SET outgoing=" + str(
-                            value[0]) + ",incoming=" + str(value[1]) + "")
+                            "SET outgoing=" + str(value[0]) +
+                            ",incoming=" + str(value[1]) + "")
 
             conn.commit()
             cur.close()

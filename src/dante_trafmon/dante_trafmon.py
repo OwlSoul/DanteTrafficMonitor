@@ -3,7 +3,9 @@
 
 # pylint: disable=C0321
 
+import os
 import argparse
+import configparser
 import datetime
 import socket
 import sys
@@ -22,6 +24,8 @@ class Application:
     """
 
     daemon_log = "daemon.log"
+
+    _default_config = "/etc/dante_trafmon.conf"
 
     _db_name = "danted"
     _db_username = "danted"
@@ -92,7 +96,16 @@ class Application:
     do_daemonize = False
 
     # How often to write results out
-    WRITE_PERIOD = 2
+    _write_period = 2
+
+    @property
+    def write_period(self):
+        return self._write_period
+
+    @write_period.setter
+    def write_period(self, value):
+        self._write_period = value
+
     # File to write results out
     OUTFILE = 'dante_trafmon.data'
 
@@ -116,9 +129,47 @@ class Application:
         parser.add_argument("--daemon", action="store_true", default=False,
                             help="Daemonize process.")
 
+        parser.add_argument("--config", default=self._default_config,
+                            help="Configuration file.")
+
         args = parser.parse_args()
         if args.daemon:
             self.do_daemonize = True
+
+        # Read configuration file
+        if not os.path.isfile(args.config):
+            print("ERROR: " + str(datetime.datetime.now()) + " config file not found " +
+                  "("+args.config+")")
+            print("       Terminating the program.")
+            sys.exit(1)
+        else:
+            self.parse_config_file(args.config)
+
+
+    def parse_config_file(self, configfile):
+        """Parse the configuration file"""
+        config = configparser.ConfigParser()
+        config.read(configfile)
+
+        if "general" in config:
+            self.write_period = int(config["general"]["write_period"])
+
+        if "database" in config:
+            self.db_name = config["database"]["db_name"]
+            self.db_username = config["database"]["db_username"]
+            self.db_hostname = config["database"]["db_hostname"]
+            self.db_password = config["database"]["db_password"]
+
+        if self.verbose >= 2:
+            print("\nINFO : " + str(datetime.datetime.now()) +
+                  " Config loaded:")
+            print("  write_period =", str(self.WRITE_PERIOD))
+            print("")
+            print("  db_hostname  = ", str(self.db_hostname))
+            print("  db_name      = ", str(self.db_name))
+            print("  db_username  = ", str(self.db_username))
+            print("  db_password  = ", str(self.db_password))
+            print("")
 
     @staticmethod
     def basic_test():
@@ -154,6 +205,8 @@ class Application:
         Launch the tread to listen for incoming data about dante traffic,
         then enter eternal cycle.
         """
+        self.parse_config_file("config/dante_trafmon.conf")
+
         signal.signal(signal.SIGINT, self.sigint_handler)
         signal.signal(signal.SIGTERM, self.sigterm_handler)
         signal.signal(signal.SIGUSR1, self.sigusr1_handler)
@@ -184,7 +237,7 @@ class Application:
 
 class TimerThread(threading.Thread):
     """
-    Timer thread class, will write data to database every WRITE_PERIOD seconds
+    Timer thread class, will write data to database every write_period seconds
     """
     log_thread = None
     app = None
@@ -271,7 +324,7 @@ class TimerThread(threading.Thread):
             else:
                 print("INFO : " + str(datetime.datetime.now()) + " Data write to database (FAIL)")
 
-            time.sleep(self.app.WRITE_PERIOD)
+            time.sleep(self.app.write_period)
 
 
 class LogThread(threading.Thread):

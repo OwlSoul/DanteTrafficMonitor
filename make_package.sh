@@ -32,8 +32,17 @@ EOL
 cat > $PACKAGE_NAME/DEBIAN/postinst <<EOL
 #!/bin/bash
 ln -s $TARGET_DIR/scripts/dante-trafmon-start /usr/sbin/dante-trafmon-start
-ln -s $TARGET_DIR/scripts/dante-tradmon-stop /usr/sbin/dante-trafmon-stop
+ln -s $TARGET_DIR/scripts/dante-trafmon-stop /usr/sbin/dante-trafmon-stop
 EOL
+
+cat > $PACKAGE_NAME/DEBIAN/postrm <<EOL
+#!/bin/bash
+rm $BINARY_DIR/dante-trafmon-start
+rm $BINARY_DIR/dante-trafmon-stop
+EOL
+
+chmod 755 $PACKAGE_NAME/DEBIAN/postinst
+chmod 755 $PACKAGE_NAME/DEBIAN/postrm
 
 dpkg-deb --build $PACKAGE_NAME
 

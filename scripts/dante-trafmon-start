@@ -2,11 +2,11 @@
 
 MONITOR_PORT="35531"
 DANTE_LOG="/var/log/danted.log"
+BINARY_DIR="/usr/local/sbin/dante_trafmon"
 
 # Starting Dante Traffic Monitor
 echo "Starting \"dante-trafmon\" scripts"
-cd "$(dirname "$0")"
-python3 ../src/dante_trafmon/dante_trafmon.py --daemon
+python3 $BINARY_DIR/src/dante_trafmon/dante_trafmon.py --daemon
 
 # TODO: Keep log or delete.
 # Resetting log. Currently old log is deleted.

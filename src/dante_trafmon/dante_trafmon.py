@@ -23,9 +23,9 @@ class Application:
     Main application class
     """
 
-    daemon_log = "/tmp/daemon.log"
+    daemon_log = "/tmp/dante_trafmon.log"
 
-    _default_config = "/etc/dante-trafmon.conf"
+    _default_config = "/etc/dante_trafmon.conf"
 
     _db_name = "danted"
     _db_username = "danted"

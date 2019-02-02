@@ -122,28 +122,6 @@ class Application:
         setproctitle.setproctitle("dante_trafmon")
 
         self.do_daemonize = False
-        # Parse arguments
-        parser = argparse.ArgumentParser(description="Dante traffic monitor, counts"
-                                                     "traffic used by different users"
-                                                     "of dante proxy server.")
-        parser.add_argument("--daemon", action="store_true", default=False,
-                            help="Daemonize process.")
-
-        parser.add_argument("--config", default=self._default_config,
-                            help="Configuration file.")
-
-        args = parser.parse_args()
-        if args.daemon:
-            self.do_daemonize = True
-
-        # Read configuration file
-        if not os.path.isfile(args.config):
-            print("ERROR: " + str(datetime.datetime.now()) + " config file not found " +
-                  "("+args.config+")")
-            print("       Terminating the program.")
-            sys.exit(1)
-        else:
-            self.parse_config_file(args.config)
 
 
     def parse_config_file(self, configfile):
@@ -221,6 +199,30 @@ class Application:
 
     def execute(self):
         """Execute main application"""
+
+        # Parse arguments
+        parser = argparse.ArgumentParser(description="Dante traffic monitor, counts"
+                                                     "traffic used by different users"
+                                                     "of dante proxy server.")
+        parser.add_argument("--daemon", action="store_true", default=False,
+                            help="Daemonize process.")
+
+        parser.add_argument("--config", default=self._default_config,
+                            help="Configuration file.")
+
+        args = parser.parse_args()
+        if args.daemon:
+            self.do_daemonize = True
+
+        # Read configuration file
+        if not os.path.isfile(args.config):
+            print("ERROR: " + str(datetime.datetime.now()) + " config file not found " +
+                  "(" + args.config + ")")
+            print("       Terminating the program.")
+            sys.exit(1)
+        else:
+            self.parse_config_file(args.config)
+
         # Prepare daemon context
         if self.do_daemonize:
             logfile = open(self.daemon_log, 'w')

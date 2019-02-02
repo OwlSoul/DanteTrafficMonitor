@@ -8,7 +8,7 @@ TAIL_PS=$(echo $TAIL_PS | cut -d " " -f 2)
 echo "PID: $TAIL_PS"
 sudo kill -s SIGINT $TAIL_PS
 
-# Stopping "dante-trafmon" process
+# Stopping "dante_trafmon" process
 killall -s SIGINT dante_trafmon
 
 echo "Dante Traffic Monitor is stopped!"

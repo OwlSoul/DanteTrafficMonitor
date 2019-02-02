@@ -23,14 +23,14 @@ class Application:
     Main application class
     """
 
-    daemon_log = "daemon.log"
+    daemon_log = "/tmp/daemon.log"
 
-    _default_config = "/etc/dante_trafmon.conf"
+    _default_config = "/etc/dante-trafmon.conf"
 
     _db_name = "danted"
     _db_username = "danted"
     _db_hostname = "127.0.0.1"
-    _db_password = "TestPass8594"
+    _db_password = "password"
 
     # Database parameters, probably should be loaded from config
     @property
@@ -163,7 +163,7 @@ class Application:
         if self.verbose >= 2:
             print("\nINFO : " + str(datetime.datetime.now()) +
                   " Config loaded:")
-            print("  write_period =", str(self.WRITE_PERIOD))
+            print("  write_period =", str(self.write_period))
             print("")
             print("  db_hostname  = ", str(self.db_hostname))
             print("  db_name      = ", str(self.db_name))

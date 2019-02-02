@@ -5,7 +5,7 @@ DANTE_LOG="/var/log/danted.log"
 
 # Starting Dante Traffic Monitor
 echo "Starting \"dante-trafmon\" scripts"
-python3 ../src/dante_trafmon/dante_trafmon.py --daemon
+python3 ../src/dante-trafmon/dante-trafmon.py --daemon
 
 # TODO: Keep log or delete.
 # Resetting log. Currently old log is deleted.

@@ -3,7 +3,7 @@
 This is a ~~"simple"~~ "not so simple anymore" script to monitor dante traffic consumption per user. Out-of-the-box dante proxy server can't do that, but it's possible with right logs setup and some simple parser.
 
 The idea behind this script that it listens on port for incoming data from dante logs, parses received data and then stores it into database. Database logs are being supplied to the script via this command:\
-`tail -f -n +1 /var/log/danted.log`
+`tail -f -n +1 /var/log/danted.log > /dev/tcp/127.0.0.1/35531`
 
 Doing something like this allows one "dante_trafmon" (this script's name) server to collect data from multiple dante servers. By default, "dante_trafmon" listens on 127.0.0.1 and port 35531.
 
@@ -76,7 +76,7 @@ Make some tests: \
 ## Running the script
 There are currently two scripts to run traffic monitor on the same machine dante server itself runs.\
 \
-"*dante-trafmon-start*" starts the traffic monitor server (under dante_trafmon user). The start script is recommended to be run under superuser.\
+"*dante-trafmon-start*" starts the traffic monitor server (under dante_trafmon user), and will also run "tail" command to supply the log as well. The start script is recommended to be run under superuser.\
 \
 "*dante-trafmon-stop*" stops the traffic monitor server, and is also recommended to be run under superuser (to stop "tail" command as well).
 

@@ -18,72 +18,128 @@ import daemon
 import psycopg2
 import setproctitle
 
+# pylint: enable=R0902
 class Application:
     """
     Main application class
     """
 
-    daemon_log = "/tmp/dante_trafmon.log"
-
     _default_config = "/etc/dante_trafmon.conf"
 
-    _db_name = "danted"
-    _db_username = "danted"
-    _db_hostname = "127.0.0.1"
-    _db_password = "password"
+    # NOTE: Since dante_trafmon can collect data from multiple dante servers,
+    #       giving it permissions to mess with dante's log is not a right decision.
+    #       This line is left as a reminder for sins of the past.
+    #_log_recreate = 60
+
 
     # Database parameters, probably should be loaded from config
+    # ----                          Database name                        ---- #
+    _db_name = "danted"
+
     @property
     def db_name(self):
+        """ Database name getter"""
         return self._db_name
 
     @db_name.setter
     def db_name(self, value):
+        """ Database name setter"""
         self._db_name = value
+
+    # ----                        Database username                      ---- #
+    _db_username = "danted"
 
     @property
     def db_username(self):
+        """ Database username getter"""
         return self._db_username
 
     @db_username.setter
     def db_username(self, value):
+        """ Database username setter"""
         self._db_username = value
+
+    # ----                        Database hostname                      ---- #
+    _db_hostname = "127.0.0.1"
 
     @property
     def db_hostname(self):
+        """ Database hostname setter"""
         return self._db_hostname
 
     @db_hostname.setter
     def db_hostname(self, value):
+        """ Database hostname getter"""
         self._db_hostname = value
+
+    # ----                         Database password                     ---- #
+    _db_password = "password"
 
     @property
     def db_password(self):
+        """ Database password setter"""
         return self._db_password
 
     @db_password.setter
     def db_password(self, value):
+        """ Database password getter"""
         self._db_password = value
 
+    # ----                           Listen address                      ---- #
     _listen_address = "127.0.0.1"
-    _listen_port = 35531
 
     @property
     def listen_address(self):
+        """ Listen address getter"""
         return self._listen_address
 
     @listen_address.setter
     def listen_address(self, value):
+        """ Listen address setter"""
         self._listen_address = value
+
+    # ----                            Listen port                        ---- #
+    _listen_port = 35531
 
     @property
     def listen_port(self):
+        """ Listen port getter"""
         return self._listen_port
 
     @listen_port.setter
     def listen_port(self, value):
+        """ Listen port setter"""
         self._listen_port = value
 
+    # ----                            Write period                       ---- #
+    # How often to write results out
+    _write_period = 2
+
+    @property
+    def write_period(self):
+        """ Write period getter"""
+        return self._write_period
+
+    @write_period.setter
+    def write_period(self, value):
+        """ Write period setter"""
+        self._write_period = value
+
+    # ----                             Daemon log                        ---- #
+
+    _daemon_log = "/tmp/dante_trafmon.log"
+
+    @property
+    def daemon_log(self):
+        """ Daemon log getter"""
+        return self._daemon_log
+
+    @daemon_log.setter
+    def daemon_log(self, value):
+        """ Daemon log setter"""
+        self._daemon_log = value
+
+    # ------------------------------------------------------------------------#
     dante_thread = None
 
     # Verbosity: 0 - none
@@ -94,17 +150,6 @@ class Application:
 
     # Daemonize the program or not?
     do_daemonize = False
-
-    # How often to write results out
-    _write_period = 2
-
-    @property
-    def write_period(self):
-        return self._write_period
-
-    @write_period.setter
-    def write_period(self, value):
-        self._write_period = value
 
     # File to write results out
     OUTFILE = 'dante_trafmon.data'
@@ -123,7 +168,6 @@ class Application:
 
         self.do_daemonize = False
 
-
     def parse_config_file(self, configfile):
         """Parse the configuration file"""
         config = configparser.ConfigParser()
@@ -131,6 +175,9 @@ class Application:
 
         if "general" in config:
             self.write_period = int(config["general"]["write_period"])
+            self.daemon_log = str(config["general"]["trafmon_log"])
+            self.listen_address = str(config["general"]["listen_address"])
+            self.listen_port = int(config["general"]["listen_port"])
 
         if "database" in config:
             self.db_name = config["database"]["db_name"]
@@ -141,12 +188,15 @@ class Application:
         if self.verbose >= 2:
             print("\nINFO : " + str(datetime.datetime.now()) +
                   " Config loaded:")
-            print("  write_period =", str(self.write_period))
+            print("  write_period   =", str(self.write_period))
+            print("  trafmon_log    =", str(self.daemon_log))
+            print("  listen_address =", str(self.listen_address))
+            print("  listen_port    =", str(self.listen_port))
             print("")
-            print("  db_hostname  = ", str(self.db_hostname))
-            print("  db_name      = ", str(self.db_name))
-            print("  db_username  = ", str(self.db_username))
-            print("  db_password  = ", str(self.db_password))
+            print("  db_hostname    = ", str(self.db_hostname))
+            print("  db_name        = ", str(self.db_name))
+            print("  db_username    = ", str(self.db_username))
+            print("  db_password    = ", str(self.db_password))
             print("")
 
     @staticmethod
@@ -166,7 +216,7 @@ class Application:
     def sigterm_handler(self, signl, frame):
         """SIGTERM Handler"""
         print("\nINFO : " + str(datetime.datetime.now()) + " SIGTERM signal received!")
-        self.sigint_handler(signl,frame)
+        self.sigint_handler(signl, frame)
 
     def sigusr1_handler(self, signl, frame):
         """SIGUSR1 Handler"""
@@ -221,7 +271,8 @@ class Application:
             print("       Terminating the program.")
             sys.exit(1)
         else:
-            self.parse_config_file(args.config)
+            pass
+            #self.parse_config_file(args.config)
 
         # Prepare daemon context
         if self.do_daemonize:
@@ -269,12 +320,14 @@ class TimerThread(threading.Thread):
                                     user=self.app.db_username,
                                     password=self.app.db_password,
                                     connect_timeout=5)
+        # pylint: disable=C0103
         except psycopg2.OperationalError as e:
             print("ERROR: " + str(datetime.datetime.now()) +
                   " Unable to connect to database (data_init_from_db)")
             print("ERROR: " + str(datetime.datetime.now()) + " " + str(e))
             result = 1
             result_msg = str(e)
+        # pylint: enable=C0103
         else:
             if conn is not None:
                 cur = conn.cursor()
@@ -429,7 +482,6 @@ class LogThread(threading.Thread):
 
         print("INFO : " + str(datetime.datetime.now()) +
               " Thread "+self.name+" terminated.")
-        return
 
     def stop(self):
         """ Set the thread to stop"""
@@ -444,25 +496,28 @@ class LogThread(threading.Thread):
         file_handler.close()
 
     def write_to_pgsql(self, out_dict):
+        """Write current collected data of users traffic consumption to PostgreSQL database"""
         result = 0
         result_msg = ""
-        """Write current collected data of users traffic consumption to PostgreSQL database"""
         try:
             conn = psycopg2.connect(host=self.app.db_hostname,
                                     database=self.app.db_name,
                                     user=self.app.db_username,
                                     password=self.app.db_password,
                                     connect_timeout=5)
+        # pylint: disable=C0103
         except psycopg2.OperationalError as e:
             print("ERROR: " + str(datetime.datetime.now()) +
                   " Unable to connect to database (main cycle)")
             print("ERROR: " + str(datetime.datetime.now()) + " " + str(e))
             result = 1
             result_msg = str(e)
+        # pylint: enable=C0103
         else:
             cur = conn.cursor()
 
             # "UPSERT" operation using ON CONFLICT
+            # pylint: disable=C0301
             for key, value in out_dict.items():
                 if self.app.verbose >= 2: print("  ", key, ':', value[1], '  ', value[0])
                 cur.execute("INSERT INTO traffic(username, outgoing, incoming)"
@@ -470,6 +525,7 @@ class LogThread(threading.Thread):
                             "ON CONFLICT(username) DO UPDATE "
                             "SET outgoing=" + str(value[0]) +
                             ",incoming=" + str(value[1]) + "")
+            # pylint: enable=C0301
 
             conn.commit()
             cur.close()
@@ -479,7 +535,7 @@ class LogThread(threading.Thread):
 
 # ------------                           MAIN                                 ------------ #
 
-
+#pylint: disable=C0103
 if __name__ == "__main__":
     app = Application()
     app.execute()

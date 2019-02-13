@@ -1,10 +1,12 @@
  #!/bin/bash
+# This script creates deb package for dante_trafmon
 
 PACKAGE_NAME="dante-trafmon"
 TARGET_DIR="/usr/local/sbin/dante_trafmon"
 BINARY_DIR="/usr/sbin"
+LOG_DIR="/var/log/dante_trafmon"
 
-VERSION="0.0.2"
+VERSION="1.0.0"
 
 echo "Packaging..."
 rm -rf $PACKAGE_NAME
@@ -21,7 +23,7 @@ cp -rf scripts/dante-trafmon-stop $PACKAGE_NAME$TARGET_DIR/scripts
 
 cat > $PACKAGE_NAME/DEBIAN/control <<EOL
 Package: dante-trafmon
-Version: 0.0.1
+Version: $VERSION
 Section: base
 Priority: optional
 Architecture: all
@@ -29,16 +31,26 @@ Maintainer: Yury D. (SoulGateW@gmail.com)
 Description: Dante Proxy Server traffic monitor.
 EOL
 
+# Post-install script
 cat > $PACKAGE_NAME/DEBIAN/postinst <<EOL
 #!/bin/bash
+useradd dante_trafmon -s /bin/false
+mkdir $LOG_DIR
+chown dante_trafmon:dante_trafmon $LOG_DIR
+chown dante_trafmon:dante_trafmon $TARGET_DIR
 ln -s $TARGET_DIR/scripts/dante-trafmon-start /usr/sbin/dante-trafmon-start
 ln -s $TARGET_DIR/scripts/dante-trafmon-stop /usr/sbin/dante-trafmon-stop
+chown dante_trafmon:dante_trafmon /usr/sbin/dante-trafmon-start
+chown dante_trafmon:dante_trafmon /usr/sbin/dante-trafmon-stop
 EOL
 
+# Post-remove script
 cat > $PACKAGE_NAME/DEBIAN/postrm <<EOL
 #!/bin/bash
 rm $BINARY_DIR/dante-trafmon-start
 rm $BINARY_DIR/dante-trafmon-stop
+userdel dante_trafmon
+rm -rf $LOG_DIR
 EOL
 
 chmod 755 $PACKAGE_NAME/DEBIAN/postinst

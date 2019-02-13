@@ -1,12 +1,15 @@
 #!/bin/bash
+# This script starts a dante_trafmon server for one machine.
+# Used for the setup where dante and dantetrafmon are on the same server.
 
+USER="dante_trafmon"
 MONITOR_PORT="35531"
 DANTE_LOG="/var/log/danted.log"
 BINARY_DIR="/usr/local/sbin/dante_trafmon"
 
 # Starting Dante Traffic Monitor
 echo "Starting \"dante-trafmon\" scripts"
-python3 $BINARY_DIR/src/dante_trafmon/dante_trafmon.py --daemon
+su - $USER -s /bin/bash -c "python3 $BINARY_DIR/src/dante_trafmon/dante_trafmon.py --daemon"
 
 # TODO: Keep log or delete.
 # Resetting log. Currently old log is deleted.

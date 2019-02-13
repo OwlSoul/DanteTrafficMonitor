@@ -233,7 +233,7 @@ class Application:
         Launch the tread to listen for incoming data about dante traffic,
         then enter eternal cycle.
         """
-        self.parse_config_file("config/dante_trafmon.conf")
+        #self.parse_config_file("config/dante_trafmon.conf")
 
         signal.signal(signal.SIGINT, self.sigint_handler)
         signal.signal(signal.SIGTERM, self.sigterm_handler)
@@ -272,7 +272,7 @@ class Application:
             sys.exit(1)
         else:
             pass
-            #self.parse_config_file(args.config)
+            self.parse_config_file(args.config)
 
         # Prepare daemon context
         if self.do_daemonize:

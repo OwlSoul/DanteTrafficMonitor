@@ -1,4 +1,6 @@
 #!/bin/bash
+# This script stops dante_trafmon server on one machine.
+# Used for the setup where dante and dantetrafmon are on the same server.
 
 echo "Stopping Dante Traffic Monitor..."
 

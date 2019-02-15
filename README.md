@@ -63,7 +63,7 @@ Grant required priveleges on newly created database to created role: \
 `GRANT ALL PRIVILEGES ON DATABASE danted TO danted;` \
  \
 Yeah, allow this too: \
-`ALTER TOLE danted WITH LOGIN;` \
+`ALTER ROLE danted WITH LOGIN;` \
  \
 Also grant all required privileges to table itself: \
 `GRANT ALL PRIVILEGES ON TABLE traffic TO danted;` \

@@ -24,6 +24,8 @@ class Application:
     Main application class
     """
 
+    VERSION = "1.0.0"
+
     _default_config = "/etc/dante_trafmon.conf"
 
     # NOTE: Since dante_trafmon can collect data from multiple dante servers,

@@ -1,6 +1,7 @@
 # Dante Traffic Monitor
 
 **UPD**: Better to use ELK stack for this purpose, it's kinda nice.
+**UPD2**: ELK stack is kinda heavy, so this thing still have its right to live.
 
 This is a ~~"simple"~~ "not so simple anymore" script to monitor dante traffic consumption per user. Out-of-the-box dante proxy server can't do that, but it's possible with right logs setup and some simple parser.
 
